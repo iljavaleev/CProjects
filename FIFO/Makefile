@@ -1,16 +1,12 @@
 CC := gcc
-TARGET := popen_impl
 
-all: $(TARGET)
+all: server client
 
-$(TARGET): main.o cpopen.o
+server: fifo_seqnum_server.c  
 	$(CC) $^ -o $@
 
-main.o: main.c  
-	$(CC) $^ -o $@ -c
-
-cpopen.o: cpopen.c
-	$(CC) $^ -o $@ -c
+client: fifo_seqnum_client.c
+	$(CC) $^ -o $@
 
 clean:
-	rm -f *.o 
+	rm -f server client
