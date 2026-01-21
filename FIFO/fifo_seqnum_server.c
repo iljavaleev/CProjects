@@ -3,7 +3,6 @@
 #include <signal.h>
 #include "fifo_seqnum.h"
 
-
 #define SEQ_NUM_SIZE 100
 
 static volatile sig_atomic_t stop = 0;
@@ -85,16 +84,14 @@ int main(int argc, char *argv[])
         if (lseek(dbFd, 0, SEEK_SET) == -1) ERROR("lseek failed");
     } 
     
-    // newly created files and directories will have the maximum possible permissions
     if (mkfifo(SERVER_FIFO, S_IRUSR | S_IWUSR | S_IWGRP) == -1 
         && errno != EEXIST) // create FIFO
         ERROR("mkfifo server");
    
-    serverFd = open(SERVER_FIFO, O_RDONLY); // open for reading -> blocked before some open write
+    serverFd = open(SERVER_FIFO, O_RDONLY); 
     if (serverFd == -1)
         ERROR("open server fifo");
 
-    /* Открываем дополнительный записывающий дескриптор, чтобы никогда не получить символ конца файла */
     int dummyFd = open(SERVER_FIFO, O_WRONLY);
     if (dummyFd == -1)
         ERROR("open dummy end fifo");
@@ -102,36 +99,38 @@ int main(int argc, char *argv[])
    
     for (;;) 
     { 
-        // Считываем запросы и отправляем
-        if (read(serverFd, &req, sizeof(struct request)) != sizeof(struct request)) 
+        if (read(serverFd, &req, sizeof(struct request)) != 
+            sizeof(struct request)) 
         {
             fprintf(stderr, "Error reading request; discarding\n");
-            continue; /* Либо частичное прочтение, либо ошибка */
+            continue; 
         }
         
-        /* Открываем клиентскую очередь FIFO (предварительно созданную клиентом) */
-        snprintf(clientFifo, CLIENT_FIFO_NAME_LEN, CLIENT_FIFO_TEMPLATE, (long) req.pid);
-        clientFd = open(clientFifo, O_WRONLY);
+        snprintf(clientFifo, CLIENT_FIFO_NAME_LEN, CLIENT_FIFO_TEMPLATE, 
+            (long) req.pid);
+          
+        clientFd = open(clientFifo, O_WRONLY | O_NONBLOCK);
 
         if (clientFd == -1) 
-        { /* Открыть не удалось, отклоняем запрос */
-            printf("open %s\n", clientFifo);
+        { 
+            printf("error open %s\n", clientFifo);
             continue;
         }
         
-        /* Отправляем ответ и закрываем очередь FIFO */
+        int flags = fcntl(clientFd, F_GETFL);
+        flags &= ~O_NONBLOCK;
+        fcntl(clientFd, F_SETFL, flags);
+
         resp.seqNum = seqNum;
-        if (write(clientFd, &resp, sizeof(struct response)) != sizeof(struct response))
+        if (write(clientFd, &resp, sizeof(struct response)) != 
+            sizeof(struct response))
             fprintf(stderr, "Error writing to FIFO %s\n", clientFifo);
         
+
         if (close(clientFd) == -1)
             printf("close\n");
         
-        /* Down server by command */
-        if (req.seqLen < 0)
-            break;
-
-        seqNum += req.seqLen; /* Обновляем номер нашей последовательности */
+        seqNum += req.seqLen; 
     }
     
     
