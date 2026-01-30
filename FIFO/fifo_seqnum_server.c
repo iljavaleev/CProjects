@@ -1,6 +1,5 @@
 #include <signal.h>
 #include <stdlib.h>
-#include <signal.h>
 #include "fifo_seqnum.h"
 
 #define SEQ_NUM_SIZE 100
