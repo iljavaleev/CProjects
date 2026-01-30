@@ -58,9 +58,5 @@ int main(int argc, char *argv[])
     if (close(fd) == -1)
         ERROR("close");
     
-    // memset(addr, 1, map_size);
-    
-    // printf("%d\n", *(addr+map_size));
-    
 	exit(EXIT_SUCCESS);
 }
