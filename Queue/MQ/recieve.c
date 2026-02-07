@@ -1,75 +1,63 @@
 #include <mqueue.h>
-#include <fcntl.h>            
+#include <fcntl.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <string.h>
 #include <unistd.h>
-#include <time.h>
-#include <errno.h>
+#include <string.h>
 
 #define ERROR(str){ printf("ERROR: %s\n", str); exit(1); }
 
 
 static void usageError(const char *progName)
 {
-    fprintf(stderr, "Usage: %s [-t wait_time] mq-name\n", progName);
-    fprintf(stderr, "       -t wait_time Set wait time (seconds) for receiving\n");
+    fprintf(stderr, "Usage: %s [-n] mq-name\n", progName);
+    fprintf(stderr, " -n Use O_NONBLOCK flag\n");
     exit(EXIT_FAILURE);
 }
 
 
 int main(int argc, char *argv[])
 {
-    ssize_t numRead;
-
-    time_t delay;
     int flags = O_RDONLY;
-    
     int opt;
-    while ((opt = getopt(argc, argv, "t:")) != -1) 
+    while ((opt = getopt(argc, argv, "n")) != -1) 
     {
         switch (opt) 
         {
-            case 't':
-                delay = atoi(optarg);
+            case 'n': 
+                flags |= O_NONBLOCK; 
                 break;
-            default:    
+            default: 
                 usageError(argv[0]);
         }
     }
-
+     
     if (optind >= argc)
         usageError(argv[0]);
-
+    
     mqd_t mqd = mq_open(argv[optind], flags);
     if (mqd == (mqd_t) -1)
         ERROR("mq_open");
-
+    
     struct mq_attr attr;
     if (mq_getattr(mqd, &attr) == -1)
-        ERROR("mq_getattr");
-
+        ERROR("mq_getattr")
+    
     void *buffer = malloc(attr.mq_msgsize);
     if (buffer == NULL)
         ERROR("malloc");
-
+    
     unsigned int prio;
-    struct timespec timeout;
-    if (clock_gettime(CLOCK_REALTIME, &timeout) == -1) 
-        ERROR("clock_gettime");
-
-    timeout.tv_sec += delay;
-    numRead = mq_timedreceive(mqd, buffer, attr.mq_msgsize, &prio, &timeout);
+    int numRead = mq_receive(mqd, buffer, attr.mq_msgsize, &prio);
     if (numRead == -1)
-    {
-        if (errno == ETIMEDOUT)
-            ERROR("timeout has expired");
         ERROR("mq_receive");
-    }
+    
     printf("Read %ld bytes; priority = %u\n", (long) numRead, prio);
     if (write(STDOUT_FILENO, buffer, numRead) == -1)
         ERROR("write");
+    
     write(STDOUT_FILENO, "\n", 1);
 
     exit(EXIT_SUCCESS);
 }
+
