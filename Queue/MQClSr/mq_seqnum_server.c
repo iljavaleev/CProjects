@@ -1,4 +1,5 @@
 #include "mq_seqnum.h"
+#include "errno.h"
 
 #define SEQ_NUM_SIZE 100
 
@@ -20,8 +21,10 @@ static void terminate_server()
     if (close(dbFd) == -1)
         SIGNAL_ERROR("close db");
 
-    if (mq_close(smq) == -1)
+    if (mq_unlink(SERVER_MQ) == -1)
         SIGNAL_ERROR("close server mq");
+   
+    _exit(1);
 }
 
 
@@ -68,25 +71,36 @@ int main(int argc, char *argv[])
         if (lseek(dbFd, 0, SEEK_SET) == -1) ERROR("lseek failed");
     } 
     
-    int flags = O_RDONLY | O_CREAT | O_EXCL;
+    int flags = O_RDWR | O_CREAT | O_EXCL;
     mode_t perms = S_IRUSR | S_IWUSR;
-    mqd_t smq = mq_open(SERVER_MQ, flags, perms, NULL);
+    
+    struct mq_attr attr, *attrp;
+    attr.mq_maxmsg = 10;
+    attr.mq_msgsize = sizeof(struct request);
+    attrp = &attr;
+    
+    mqd_t smq = mq_open(SERVER_MQ, flags, perms, attrp);
     if (smq == (mqd_t) -1)
     {
         ERROR("error create queue");
     }
     
+
+    void *buffer = malloc(attr.mq_msgsize);
+    if (buffer == NULL)
+        ERROR("malloc");
+    
     for(;;)
     {
-        
-    
-        if (mq_receive(smq,(char*) &req, sizeof(struct request), NULL) != sizeof(struct request))
+         
+        if (mq_receive(smq, buffer, attr.mq_msgsize, NULL) != sizeof(struct request))
         {
             fprintf(stderr, "Error reading request; discarding\n");
             continue;    
         }
-    
-       
+        req = *((struct request*) buffer);
+        
+   
         snprintf(clientMQ, MQ_NAME_LEN, CLIENT_MQ_TEMPLATE, (long) req.pid);
         mqd_t cmq = mq_open(clientMQ, O_WRONLY);
         if (cmq == (mqd_t) -1)
@@ -95,7 +109,7 @@ int main(int argc, char *argv[])
             continue;
 
         }
-        
+        printf("after\n"); 
         struct timespec timeout;
         if (clock_gettime(CLOCK_REALTIME, &timeout) == -1) 
             ERROR("clock_gettime");
@@ -103,14 +117,14 @@ int main(int argc, char *argv[])
         timeout.tv_sec += DELAY_SECONDS;
         resp.seqNum = seqNum;
         
-        if (mq_timedsend(cmq, (char*) &resp, sizeof(struct response), 1, &timeout) == -1)
+        if (mq_timedsend(cmq, (void*) &resp, sizeof(struct response), 1, &timeout) == -1)
         {
             fprintf(stderr, "Error writing to MQ %s\n", clientMQ);
         }
     
         if (mq_close(cmq) == -1)
             printf("close\n");
-        
+         
         seqNum += req.seqLen; 
     }
     
